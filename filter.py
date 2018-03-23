@@ -7,7 +7,7 @@ from numpy.fft import fft, fftfreq, fftshift
 
 plt.interactive(True)
 
-f0 = 200e3
+f0 = 2e3
 
 b0 = np.genfromtxt("./1stStage.txt")
 b0p = np.genfromtxt("./1stStage2.txt")
@@ -36,9 +36,9 @@ ys = yi.cumsum()
 ysp = yip.cumsum()
 
 
-f0 = 200e3
-f1 = 10e3
-f2 = 400.
+f0 = 2e3
+f1 = 500.
+f2 = 200.
 fnyq = f0/2.
 
 b0, a0 = sig.butter(4, f1/fnyq)

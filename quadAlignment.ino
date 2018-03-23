@@ -13,12 +13,12 @@ float coeffScale[4] = {1., 1., 1., 1.}; // correction factor
 float errOffs[4][2] = {0, 0, 0, 0, 0, 0, 0, 0}; // X and Y offsets
 const float p0s[4][2] = {-14.786, -26.88, -20.864, 26.88, 16.786, 26.88, 22.846, -26.88}; // x, y centers of quadrant PDs
 // ADC filter
-const float b0[] = {0.0004166, 0.0016664, 0.0024996, 0.0016664, 0.0004166};
-const float a0[] = {1.0, -3.18063855,  3.86119435, -2.11215536,  0.43826514};
+const float b0[] = {0.09398085, 0.37592341, 0.56388511, 0.37592341, 0.09398085};
+const float a0[] = {1.0, -2.49800181e-16,  4.86028822e-01, -6.63518679e-17, 1.76648009e-02};
 IIRFilter *iir0[4][4];
 // Position filter
-const float b1[] = {3.91302054e-05, 7.82604108e-05, 3.91302054e-05};
-const float a1[] = {1., -1.98222893,  0.98238545};
+const float b1[] = {0.06745527, 0.13491055, 0.06745527};
+const float a1[] = {1.0, -1.1429805, 0.4128016};
 IIRFilter *iir1[4][2];
 // Current values of filters
 float ciir0[4][4];
@@ -28,7 +28,10 @@ float offsets[3] = {0.0, 0.0, 0.0};
 // ADC reader
 ADC *adc = new ADC();
 ADC::Sync_result syncRes;
-
+unsigned long period[30];
+int period_index = 29;
+int period_count = 0;
+float zero[4][4];
 String serialComm;
 
 void setup() {
@@ -44,13 +47,13 @@ void setup() {
     // ADC0
     adc->setAveraging(1);
     adc->setResolution(16);
-    adc->setConversionSpeed(ADC_CONVERSION_SPEED::LOW_SPEED);
-    adc->setSamplingSpeed(ADC_SAMPLING_SPEED::LOW_SPEED);
+    adc->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED_16BITS);
+    adc->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
     // ADC1
     adc->setAveraging(1, ADC_1);
     adc->setResolution(16, ADC_1);
-    adc->setConversionSpeed(ADC_CONVERSION_SPEED::LOW_SPEED, ADC_1);
-    adc->setSamplingSpeed(ADC_SAMPLING_SPEED::LOW_SPEED, ADC_1);
+    adc->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED_16BITS, ADC_1);
+    adc->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED, ADC_1);
     // Sync Reads
     for(int i=0;i<6;i++) {
         for(int j=0;j<2;j++){
@@ -64,6 +67,7 @@ void setup() {
     for(int i=0;i<4;i++){
         for(int j=0;j<4;j++){
             iir0[i][j] = new IIRFilter(b0, a0);
+            zero[i][j] = 0.0;
         }
         for(int j=0;j<2;j++){
             iir1[i][j] = new IIRFilter(b1, a1);
@@ -72,6 +76,12 @@ void setup() {
 }
 
 void loop() {
+    if (period_count % 1000 == 0) {
+        period_index = (period_index+1) % 30;
+        period[period_index] = micros();
+        period_count = 0;
+    }
+    period_count++;
     updatePos();
     if (Serial.available() > 0) {
         serialComm = Serial.readStringUntil('\n');
@@ -98,6 +108,62 @@ void loop() {
                 Serial.print(", ");
             }
             Serial.println("");
+        } else if (serialComm == "freq") {
+            float frq = avgFreq();
+            Serial.println(frq);
+        } else if (serialComm == "period") {
+            long rtn[30];
+            for (int i=0;i<30;i++) {
+                int j = (i + period_index) % 30;
+                int k = (i + period_index - 1) % 30;
+                Serial.print(period[j]);
+                Serial.print(", ");
+                Serial.print(j);
+                Serial.print(", ");
+                Serial.print(k);
+                Serial.print("; ");
+                if (period[j] > 0 && period[k] > 0) {
+                    long prd = period[j]-period[k];
+                    if (prd > 0) {
+                        rtn[i] = prd;
+                    } else {
+                        rtn[i] = -1;
+                    }
+                } else {
+                    rtn[i] = 0;
+                }
+            }
+            Serial.println("");
+            for (int i=0;i<30;i++) {
+                Serial.print(rtn[i]);
+                Serial.print(", ");
+            }
+            Serial.println("");
+        } else if (serialComm == "volts") {
+            int rtn[4][4];
+            for(int i=0;i<6;i++) {
+                for (int j=0;j<2;j++) {
+                    rtn[syncReads[i][j][1]][syncReads[i][j][2]] = adc->analogRead(syncReads[i][j][0]);
+                }
+            }
+            // Single Reads
+            for(int i=0;i<4;i++) {
+                rtn[singleReads[i][1]][singleReads[i][2]] = adc->analogRead(singleReads[i][0]);
+            }
+            for(int i=0;i<4;i++) {
+                for(int j=0;j<4;j++) {
+                    Serial.print(rtn[i][j]);
+                    Serial.print(", ");
+                }
+                Serial.print("; ");
+            }
+            Serial.println("");
+        } else if (serialComm == "zero") {
+            for (int i=0;i<4;i++) {
+                for (int j=0;j<4;j++) {
+                    zero[i][j] += ciir0[i][j];
+                }
+            }
         }
     }
     if (HWSERIAL.available() > 0) {
@@ -117,8 +183,8 @@ void updatePos() {
     for(int i=0;i<6;i++) {
         syncRes = adc->analogSynchronizedRead(syncReads[i][0][0],
                                               syncReads[i][1][0]);
-        // syncRes.result_adc0 = (uint16_t)result.result_adc0;
-        // syncRes.result_adc1 = (uint16_t)result.result_adc1;
+        syncRes.result_adc0 = (uint16_t)syncRes.result_adc0;
+        syncRes.result_adc1 = (uint16_t)syncRes.result_adc1;
         updateValue(syncReads[i][0][1], syncReads[i][0][2],
                     (float)syncRes.result_adc0);
         updateValue(syncReads[i][1][1],
@@ -134,7 +200,7 @@ void updatePos() {
 }
 
 void updateValue(int i, int j, float value) {
-    ciir0[i][j] = iir0[i][j]->filter(value);
+    ciir0[i][j] = iir0[i][j]->filter(value)-zero[i][j];
 }
 
 void updateDeltas() {
@@ -142,6 +208,9 @@ void updateDeltas() {
         float sum = 0;
         for(int j=0;j<4;j++) {
             sum += ciir0[i][j];
+        }
+        if (sum < 1000) {
+            sum = 65.536e3;
         }
         ciir1[i][0] = iir1[i][0]->filter((ciir0[i][2]+ciir0[i][3]
                                           -ciir0[i][0]-ciir0[i][1])
@@ -169,4 +238,19 @@ void updateOffsets() {
     offsets[0] = a[0]*orderCoeff[0]-b[0]*orderCoeff[1]-c[0]*orderCoeff[0];
     offsets[1] = a[1]*orderCoeff[0]-b[1]*orderCoeff[1]-c[1]*orderCoeff[0];
     offsets[2] = a[1]*orderCoeff[1]+c[0]*orderCoeff[1]+c[1]*orderCoeff[2];
+}
+
+float avgFreq() {
+    long rtn = 0;
+    for (int i=0;i<30;i++) {
+        int j = (i + period_index) % 30;
+        int k = (i + period_index - 1) % 30;
+        if (period[j] > 0 && period[k] > 0) {
+            long prd = period[j]-period[k];
+            if (prd > 0) {
+                rtn += prd;
+            }
+        }
+    }
+    return ((float)rtn/30.0);
 }

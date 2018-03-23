@@ -11,22 +11,23 @@ const float coeff = 1.323714190441312; // partial derivative
 const float orderCoeff[3] = {0.25069945567551805, 0.0007026174540612872, 7.931892352488745e-05};
 float coeffScale[4] = {1., 1., 1., 1.}; // correction factor
 float errOffs[4][2] = {0, 0, 0, 0, 0, 0, 0, 0}; // X and Y offsets
-const float p0s[4][2] = {-14.786, -26.88, -20.864, 26.88, 16.786, 26.88, 22.846, -26.88};
-// ADC filters
+const float p0s[4][2] = {-14.786, -26.88, -20.864, 26.88, 16.786, 26.88, 22.846, -26.88}; // x, y centers of quadrant PDs
+// ADC filter
 const float b0[] = {0.0004166, 0.0016664, 0.0024996, 0.0016664, 0.0004166};
 const float a0[] = {1.0, -3.18063855,  3.86119435, -2.11215536,  0.43826514};
-IIRFilter iir0[4][4];
-// Position filters
+IIRFilter *iir0[4][4];
+// Position filter
 const float b1[] = {3.91302054e-05, 7.82604108e-05, 3.91302054e-05};
 const float a1[] = {1., -1.98222893,  0.98238545};
-IIRFilter iir1[4][2];
+IIRFilter *iir1[4][2];
+// Current values of filters
 float ciir0[4][4];
-float ciir1[4][4];
+float ciir1[4][2];
 // Offsets x[mm] y[mm] theta[rad]
-float[3] offsets = {0.0, 0.0, 0.0};
+float offsets[3] = {0.0, 0.0, 0.0};
 // ADC reader
 ADC *adc = new ADC();
-ADC::Sync_result = syncRes;
+ADC::Sync_result syncRes;
 
 String serialComm;
 
@@ -71,7 +72,6 @@ void setup() {
 }
 
 void loop() {
-    // put your main code here, to run repeatedly:
     updatePos();
     if (Serial.available() > 0) {
         serialComm = Serial.readStringUntil('\n');
@@ -85,27 +85,29 @@ void loop() {
             Serial.println("");
         } else if (serialComm == "deltas") {
             for(int i=0;i<4;i++){
-                Serial.print(ciir1[i]);
+                Serial.print(ciir1[i][0]);
                 Serial.print(", ");
+                Serial.print(ciir1[i][1]);
+                Serial.print("; ");
             }
             Serial.println("");
         } else if (serialComm == "offsets") {
             updateOffsets();
             for(int i=0;i<3;i++){
-                Serial.print(offsets[i])
-                    Serial.print(", ");
+                Serial.print(offsets[i]);
+                Serial.print(", ");
             }
             Serial.println("");
         }
     }
     if (HWSERIAL.available() > 0) {
-        HWSERIAL.readStringUntil('\n');
+        HWSERIAL.readStringUntil('\n'); // discard to eol
         updateOffsets();
-        HWSERIAL.print(offsets[0]);
+        HWSERIAL.print(offsets[0]); // x in mm
         HWSERIAL.print(" ");
-        HWSERIAL.print(offsets[1]);
+        HWSERIAL.print(offsets[1]); // y in mm
         HWSERIAL.print(" ");
-        HWSERIAL.println(offsets[2]);
+        HWSERIAL.println(offsets[2]); // theta in rad
     }
 }
 
@@ -114,10 +116,10 @@ void updatePos() {
     // Sync reads
     for(int i=0;i<6;i++) {
         syncRes = adc->analogSynchronizedRead(syncReads[i][0][0],
-                                              syncReads[i][1][0]));
+                                              syncReads[i][1][0]);
         // syncRes.result_adc0 = (uint16_t)result.result_adc0;
         // syncRes.result_adc1 = (uint16_t)result.result_adc1;
-        updateValue(syncReads[i][0][1], [syncReads[i][0][2]],
+        updateValue(syncReads[i][0][1], syncReads[i][0][2],
                     (float)syncRes.result_adc0);
         updateValue(syncReads[i][1][1],
                     syncReads[i][1][2],
@@ -132,7 +134,7 @@ void updatePos() {
 }
 
 void updateValue(int i, int j, float value) {
-    ciir0[i][j] = iir0[i][j].filter(value);
+    ciir0[i][j] = iir0[i][j]->filter(value);
 }
 
 void updateDeltas() {
@@ -141,11 +143,11 @@ void updateDeltas() {
         for(int j=0;j<4;j++) {
             sum += ciir0[i][j];
         }
-        ciir1[i][0] = iir1[i][0].filter((ciir0[i][2]+ciir0[i][3]
-                                         -ciir0[i][0]-ciir0[i][1])
+        ciir1[i][0] = iir1[i][0]->filter((ciir0[i][2]+ciir0[i][3]
+                                          -ciir0[i][0]-ciir0[i][1])
                                          /sum);
-        ciir1[i][1] = iir1[i][1].filter((ciir0[i][2]+ciir0[i][3]
-                                         -ciir0[i][0]-ciir0[i][1])
+        ciir1[i][1] = iir1[i][1]->filter((ciir0[i][2]+ciir0[i][3]
+                                          -ciir0[i][0]-ciir0[i][1])
                                          /sum);
     }
 }
@@ -166,5 +168,5 @@ void updateOffsets() {
     }
     offsets[0] = a[0]*orderCoeff[0]-b[0]*orderCoeff[1]-c[0]*orderCoeff[0];
     offsets[1] = a[1]*orderCoeff[0]-b[1]*orderCoeff[1]-c[1]*orderCoeff[0];
-    offsets[1] = a[1]*orderCoeff[1]+c[0]*orderCoeff[1]+c[1]*orderCoeff[2];
+    offsets[2] = a[1]*orderCoeff[1]+c[0]*orderCoeff[1]+c[1]*orderCoeff[2];
 }

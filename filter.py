@@ -37,17 +37,19 @@ ysp = yip.cumsum()
 
 
 f0 = 2e3
-f1 = 500.
-f2 = 200.
+f1 = 100.
+f2 = 20.
 fnyq = f0/2.
 
 b0, a0 = sig.butter(4, f1/fnyq)
 flt = sig.dlti(b0, a0, dt=1./f0)
 w, H = flt.freqresp()
-t, y = flt.step(n=4096)
+t0, y0 = flt.step(n=4096)
+y0 = y0[0]
 
 b1, a1 = sig.butter(2, f2/fnyq)
-
+t1, y1 = flt.step(n=4096)
+y1 = y1[0]
 ns = np.arange(1024)
 xs = randn(ns.size)
 xs[16:] += 10.

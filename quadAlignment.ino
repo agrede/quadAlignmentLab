@@ -13,12 +13,12 @@ float coeffScale[4] = {1., 1., 1., 1.}; // correction factor
 float errOffs[4][2] = {0, 0, 0, 0, 0, 0, 0, 0}; // X and Y offsets
 const float p0s[4][2] = {-14.786, -26.88, -20.864, 26.88, 16.786, 26.88, 22.846, -26.88}; // x, y centers of quadrant PDs
 // ADC filter
-const float b0[] = {0.09398085, 0.37592341, 0.56388511, 0.37592341, 0.09398085};
-const float a0[] = {1.0, -2.49800181e-16,  4.86028822e-01, -6.63518679e-17, 1.76648009e-02};
+const float b0[] = {0.0004166, 0.0016664, 0.0024996, 0.0016664, 0.0004166};
+const float a0[] = {1.0, -3.18063855,  3.86119435, -2.11215536,  0.43826514};
 IIRFilter *iir0[4][4];
 // Position filter
-const float b1[] = {0.06745527, 0.13491055, 0.06745527};
-const float a1[] = {1.0, -1.1429805, 0.4128016};
+const float b1[] = {0.00094469, 0.00188938, 0.00094469};
+const float a1[] = {1.0, -1.91119707,  0.91497583};
 IIRFilter *iir1[4][2];
 // Current values of filters
 float ciir0[4][4];

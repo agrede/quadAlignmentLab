@@ -5,7 +5,7 @@
 #define HWSERIAL Serial1
 
 // Read order
-const int syncReads[6][2][3] = {A0, 0, 0, A2, 0, 2, A2, 0, 1, A3, 0, 3, A8, 2, 0, A12, 3, 0, A9, 2, 1, A13, 3, 1, A14, 3, 2, A10, 2, 2, A11, 2, 3, A16, 3, 3};
+const int syncReads[6][2][3] = {A0, 0, 0, A2, 0, 2, A1, 0, 1, A3, 0, 3, A8, 2, 0, A12, 3, 0, A9, 2, 1, A13, 3, 1, A14, 3, 2, A10, 2, 2, A11, 2, 3, A16, 3, 3};
 const int singleReads[4][3] = {A4, 1, 0, A5, 1, 1, A6, 1, 2, A7, 1, 3};
 const float coeff = 1.323714190441312; // partial derivative
 const float orderCoeff[3] = {0.47485048738203434, 0.01186930013456576, 0.007464619955641924};

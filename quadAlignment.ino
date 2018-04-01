@@ -5,11 +5,11 @@
 #define HWSERIAL Serial1
 
 // Read order
-const int syncReads[6][2][3] = {A0, 0, 0, A2, 0, 2, A1, 0, 1, A3, 0, 3, A8, 2, 0, A12, 3, 0, A9, 2, 1, A13, 3, 1, A14, 3, 2, A10, 2, 2, A11, 2, 3, A16, 3, 3};
+const int syncReads[6][2][3] = {A0, 0, 0, A2, 0, 2, A1, 0, 1, A3, 0, 3, A8, 2, 0, A13, 3, 0, A9, 2, 1, A12, 3, 1, A14, 3, 2, A10, 2, 2, A11, 2, 3, A19, 3, 3};
 const int singleReads[4][3] = {A4, 1, 0, A5, 1, 1, A6, 1, 2, A7, 1, 3};
 const float coeff = 1.323714190441312; // partial derivative
-const float orderCoeff[3] = {0.47485048738203434, 0.01186930013456576, 0.007464619955641924};
-const float orderCoeffTheta[3] = {0.01186930013456576, 0.001410912348833969, 0.00033454054521180445};
+const float orderCoeff[3] = {0.42480258,0.00722038,-0.00676927};
+const float orderCoeffTheta[3] = {0.00722038,0.00104681,-0.00030721};
 float coeffScale[4] = {1., 1., 1., 1.}; // correction factor
 float errOffs[4][2] = {0, 0, 0, 0, 0, 0, 0, 0}; // X and Y offsets
 const float p0s[4][2] = {-14.786, -26.88, -20.864, 26.88, 16.786, 26.88, 22.846, -26.88}; // x, y centers of quadrant PDs
@@ -45,6 +45,10 @@ void setup() {
     pinMode(29, INPUT);
     pinMode(30, INPUT);
     pinMode(32, INPUT);
+    //pinMode(0, OUTPUT);
+    //pinMode(1, OUTPUT);
+    //digitalWrite(0, LOW);
+    //digitalWrite(1, LOW);
     // ADC0
     adc->setAveraging(1);
     adc->setResolution(16);
@@ -77,12 +81,12 @@ void setup() {
 }
 
 void loop() {
-    if (period_count % 1000 == 0) {
-        period_index = (period_index+1) % 30;
-        period[period_index] = micros();
-        period_count = 0;
-    }
-    period_count++;
+    /* if (period_count % 1000 == 0) { */
+    /*     period_index = (period_index+1) % 30; */
+    /*     period[period_index] = micros(); */
+    /*     period_count = 0; */
+    /* } */
+    //period_count++;
     updatePos();
     if (Serial.available() > 0) {
         serialComm = Serial.readStringUntil('\n');
@@ -105,7 +109,7 @@ void loop() {
         } else if (serialComm == "offsets") {
             updateOffsets();
             for(int i=0;i<3;i++){
-                Serial.print(offsets[i]);
+                Serial.print(offsets[i], 4);
                 Serial.print(", ");
             }
             Serial.println("");
@@ -162,19 +166,20 @@ void loop() {
         } else if (serialComm == "zero") {
             for (int i=0;i<4;i++) {
                 for (int j=0;j<4;j++) {
-                    zero[i][j] += ciir0[i][j];
+                    zero[i][j] -= ciir0[i][j];
                 }
             }
         }
     }
     if (HWSERIAL.available() > 0) {
-        HWSERIAL.readStringUntil('\n'); // discard to eol
+        HWSERIAL.readString(); // discard to eol
         updateOffsets();
-        HWSERIAL.print(offsets[0]); // x in mm
+        HWSERIAL.print(offsets[0], 4); // x in mm
         HWSERIAL.print(" ");
-        HWSERIAL.print(offsets[1]); // y in mm
+        HWSERIAL.print(offsets[1], 4); // y in mm
         HWSERIAL.print(" ");
-        HWSERIAL.println(offsets[2]); // theta in rad
+        HWSERIAL.println(offsets[2], 4); // theta in rad
+        Serial.println("Send Update");
     }
 }
 
@@ -201,7 +206,7 @@ void updatePos() {
 }
 
 void updateValue(int i, int j, float value) {
-    ciir0[i][j] = iir0[i][j]->filter(value)-zero[i][j];
+    ciir0[i][j] = zero[i][j]-iir0[i][j]->filter(value);
 }
 
 void updateDeltas() {
@@ -216,8 +221,8 @@ void updateDeltas() {
         ciir1[i][0] = iir1[i][0]->filter((ciir0[i][2]+ciir0[i][3]
                                           -ciir0[i][0]-ciir0[i][1])
                                          /sum);
-        ciir1[i][1] = iir1[i][1]->filter((ciir0[i][2]+ciir0[i][3]
-                                          -ciir0[i][0]-ciir0[i][1])
+        ciir1[i][1] = iir1[i][1]->filter((ciir0[i][3]+ciir0[i][0]
+                                          -ciir0[i][2]-ciir0[i][1])
                                          /sum);
     }
 }
@@ -227,6 +232,9 @@ void updateOffsets() {
     float b[2] = {0.0, 0.0};
     float c[2] = {0.0, 0.0};
     for(int i=0;i<3;i++){
+        if (i==2) {
+            i++;
+        }
         float dx = coeff*coeffScale[i]*(ciir1[i][0]-errOffs[i][0]);
         float dy = coeff*coeffScale[i]*(ciir1[i][1]-errOffs[i][1]);
         a[0] += dx;
@@ -236,9 +244,9 @@ void updateOffsets() {
         c[0] += dx*p0s[i][1];
         c[1] += dy*p0s[i][1];
     }
-    offsets[0] = a[0]*orderCoeff[0]+b[0]*orderCoeff[1]-c[0]*orderCoeff[2];
-    offsets[1] = a[1]*orderCoeff[0]+b[1]*orderCoeff[1]-c[1]*orderCoeff[2];
-    offsets[2] = a[1]*orderCoeffTheta[0]+c[0]*orderCoeffTheta[1]-c[1]*orderCoeffTheta[2];
+    offsets[0] = a[0]*orderCoeff[0]+b[0]*orderCoeff[1]+c[0]*orderCoeff[2];
+    offsets[1] = a[1]*orderCoeff[0]+b[1]*orderCoeff[1]+c[1]*orderCoeff[2];
+    offsets[2] = a[1]*orderCoeffTheta[0]+c[0]*orderCoeffTheta[1]+c[1]*orderCoeffTheta[2];
 }
 
 float avgFreq() {

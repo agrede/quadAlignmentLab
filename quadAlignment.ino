@@ -5,8 +5,8 @@
 #define HWSERIAL Serial1
 
 // Read order
-const int syncReads[6][2][3] = {A0, 0, 0, A2, 0, 2, A1, 0, 1, A3, 0, 3, A8, 2, 0, A13, 3, 0, A9, 2, 1, A12, 3, 1, A14, 3, 2, A10, 2, 2, A11, 2, 3, A19, 3, 3};
-const int singleReads[4][3] = {A4, 1, 0, A5, 1, 1, A6, 1, 2, A7, 1, 3};
+const int syncReads[6][2][3] = {A0, 0, 2, A2, 0, 0, A1, 0, 1, A3, 0, 3, A8, 2, 2, A13, 3, 2, A9, 2, 1, A12, 3, 1, A14, 3, 0, A10, 2, 0, A11, 2, 3, A19, 3, 3};
+const int singleReads[4][3] = {A4, 1, 2, A5, 1, 1, A6, 1, 0, A7, 1, 3};
 const float coeff = 1.323714190441312; // partial derivative
 const float orderCoeff[3] = {0.42480258,0.00722038,-0.00676927};
 const float orderCoeffTheta[3] = {0.00722038,0.00104681,-0.00030721};
@@ -174,11 +174,14 @@ void loop() {
     if (HWSERIAL.available() > 0) {
         HWSERIAL.readString(); // discard to eol
         updateOffsets();
-        HWSERIAL.print(offsets[0], 4); // x in mm
+        // HWSERIAL.print(offsets[0], 4); // x in mm
+        HWSERIAL.print(0.1*ciir1[1][0], 4); // x in mm
         HWSERIAL.print(" ");
-        HWSERIAL.print(offsets[1], 4); // y in mm
+        // HWSERIAL.print(offsets[1], 4); // y in mm
+        HWSERIAL.print(0.1*ciir1[1][1], 4); // y in mm
         HWSERIAL.print(" ");
-        HWSERIAL.println(offsets[2], 4); // theta in rad
+        // HWSERIAL.println(offsets[2], 4); // theta in rad
+        HWSERIAL.println(0.0, 4); // theta in rad
         Serial.println("Send Update");
     }
 }

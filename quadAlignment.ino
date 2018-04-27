@@ -166,7 +166,7 @@ void loop() {
         } else if (serialComm == "zero") {
             for (int i=0;i<4;i++) {
                 for (int j=0;j<4;j++) {
-                    zero[i][j] -= ciir0[i][j];
+                    zero[i][j] += ciir0[i][j];
                 }
             }
         }
@@ -209,7 +209,7 @@ void updatePos() {
 }
 
 void updateValue(int i, int j, float value) {
-    ciir0[i][j] = zero[i][j]-iir0[i][j]->filter(value);
+    ciir0[i][j] = iir0[i][j]->filter(value)-zero[i][j];
 }
 
 void updateDeltas() {

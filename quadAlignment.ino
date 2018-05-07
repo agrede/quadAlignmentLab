@@ -5,14 +5,35 @@
 #define HWSERIAL Serial1
 
 // Read order
-const int syncReads[6][2][3] = {A0, 0, 2, A2, 0, 0, A1, 0, 1, A3, 0, 3, A8, 2, 2, A13, 3, 2, A9, 2, 1, A12, 3, 1, A14, 3, 0, A10, 2, 0, A11, 2, 3, A19, 3, 3};
-const int singleReads[4][3] = {A4, 1, 2, A5, 1, 1, A6, 1, 0, A7, 1, 3};
-const float coeff = 1.323714190441312; // partial derivative
-const float orderCoeff[3] = {0.42480258,0.00722038,-0.00676927};
-const float orderCoeffTheta[3] = {0.00722038,0.00104681,-0.00030721};
-float coeffScale[4] = {1., 1., 1., 1.}; // correction factor
-float errOffs[4][2] = {0, 0, 0, 0, 0, 0, 0, 0}; // X and Y offsets
-const float p0s[4][2] = {-14.786, -26.88, -20.864, 26.88, 16.786, 26.88, 22.846, -26.88}; // x, y centers of quadrant PDs
+const int syncReads[6][2][3] = {
+    A0, 0, 2, A2, 0, 0,
+    A1, 0, 1, A3, 0, 3,
+    A8, 2, 2, A13, 3, 2,
+    A9, 2, 1, A12, 3, 1,
+    A14, 3, 0, A10, 2, 0,
+    A11, 2, 3, A19, 3, 3};
+const int singleReads[4][3] = {
+    A4, 1, 2,
+    A5, 1, 1,
+    A6, 1, 0,
+    A7, 1, 3};
+// Coefficients
+const float lstSqCoeff[3][3] = {
+    0.00326549217934012, 0.0022916757615726196, 0.0003644522521584955,
+    0.3625921432602209, 0.02053341482369067, 0.00326549217934012,
+    0.02053341482369067, 0.34774339052210196, 0.0022916757615726196}; // y order: theta, tx, ty, x order sum dx, sum dy, inner product
+float errScale[4][2] = {
+    1.06215847, 1.06215847,
+    0.668015881, 0.668015881,
+    1.0, 1.0,
+    1.09505483, 1.27578865}; // Error cell slopes [1/mm]
+float errOffs[4][2] = {
+    -0.29589299, -0.29589299,
+    0.23228652, 0.23228652,
+    -0.10956691, 0.11839993}; // Error celll X and Y offsets [mm]
+const float p0s[4][2] = {
+    -14.786, 26.88, -20.864, -26.88,
+    16.786, -26.88, 22.846, 26.88}; // x, y centers of quadrant PDs [mm]
 // ADC filter
 const float b0[] = {0.0004166, 0.0016664, 0.0024996, 0.0016664, 0.0004166};
 const float a0[] = {1.0, -3.18063855,  3.86119435, -2.11215536,  0.43826514};
@@ -29,10 +50,6 @@ float offsets[3] = {0.0, 0.0, 0.0};
 // ADC reader
 ADC *adc = new ADC();
 ADC::Sync_result syncRes;
-unsigned long period[30];
-int period_index = 29;
-int period_count = 0;
-float zero[4][4];
 String serialComm;
 
 void setup() {
@@ -45,10 +62,6 @@ void setup() {
     pinMode(29, INPUT);
     pinMode(30, INPUT);
     pinMode(32, INPUT);
-    //pinMode(0, OUTPUT);
-    //pinMode(1, OUTPUT);
-    //digitalWrite(0, LOW);
-    //digitalWrite(1, LOW);
     // ADC0
     adc->setAveraging(1);
     adc->setResolution(16);
@@ -81,12 +94,6 @@ void setup() {
 }
 
 void loop() {
-    /* if (period_count % 1000 == 0) { */
-    /*     period_index = (period_index+1) % 30; */
-    /*     period[period_index] = micros(); */
-    /*     period_count = 0; */
-    /* } */
-    //period_count++;
     updatePos();
     if (Serial.available() > 0) {
         serialComm = Serial.readStringUntil('\n');
@@ -113,37 +120,6 @@ void loop() {
                 Serial.print(", ");
             }
             Serial.println("");
-        } else if (serialComm == "freq") {
-            float frq = avgFreq();
-            Serial.println(frq);
-        } else if (serialComm == "period") {
-            long rtn[30];
-            for (int i=0;i<30;i++) {
-                int j = (i + period_index) % 30;
-                int k = (i + period_index - 1) % 30;
-                Serial.print(period[j]);
-                Serial.print(", ");
-                Serial.print(j);
-                Serial.print(", ");
-                Serial.print(k);
-                Serial.print("; ");
-                if (period[j] > 0 && period[k] > 0) {
-                    long prd = period[j]-period[k];
-                    if (prd > 0) {
-                        rtn[i] = prd;
-                    } else {
-                        rtn[i] = -1;
-                    }
-                } else {
-                    rtn[i] = 0;
-                }
-            }
-            Serial.println("");
-            for (int i=0;i<30;i++) {
-                Serial.print(rtn[i]);
-                Serial.print(", ");
-            }
-            Serial.println("");
         } else if (serialComm == "volts") {
             int rtn[4][4];
             for(int i=0;i<6;i++) {
@@ -163,25 +139,16 @@ void loop() {
                 Serial.print("; ");
             }
             Serial.println("");
-        } else if (serialComm == "zero") {
-            for (int i=0;i<4;i++) {
-                for (int j=0;j<4;j++) {
-                    zero[i][j] += ciir0[i][j];
-                }
-            }
         }
     }
     if (HWSERIAL.available() > 0) {
         HWSERIAL.readString(); // discard to eol
         updateOffsets();
-        // HWSERIAL.print(offsets[0], 4); // x in mm
-        HWSERIAL.print(0.1*ciir1[1][0], 4); // x in mm
+        HWSERIAL.print(offsets[0], 4); // x in mm
         HWSERIAL.print(" ");
-        // HWSERIAL.print(offsets[1], 4); // y in mm
-        HWSERIAL.print(0.1*ciir1[1][1], 4); // y in mm
+        HWSERIAL.print(offsets[1], 4); // y in mm
         HWSERIAL.print(" ");
-        // HWSERIAL.println(offsets[2], 4); // theta in rad
-        HWSERIAL.println(0.0, 4); // theta in rad
+        HWSERIAL.println(offsets[2], 4); // theta in rad
         Serial.println("Send Update");
     }
 }
@@ -209,7 +176,7 @@ void updatePos() {
 }
 
 void updateValue(int i, int j, float value) {
-    ciir0[i][j] = iir0[i][j]->filter(value)-zero[i][j];
+    ciir0[i][j] = iir0[i][j]->filter(value);
 }
 
 void updateDeltas() {
@@ -218,7 +185,7 @@ void updateDeltas() {
         for(int j=0;j<4;j++) {
             sum += ciir0[i][j];
         }
-        if (sum < 1000) {
+        if (sum < 200) {
             sum = 65.536e3;
         }
         ciir1[i][0] = iir1[i][0]->filter((ciir0[i][2]+ciir0[i][3]
@@ -231,38 +198,21 @@ void updateDeltas() {
 }
 
 void updateOffsets() {
-    float a[2] = {0.0, 0.0};
-    float b[2] = {0.0, 0.0};
-    float c[2] = {0.0, 0.0};
+    float X[3] = {0.0, 0.0, 0.0};
     for(int i=0;i<3;i++){
         if (i==2) {
             i++;
         }
-        float dx = coeff*coeffScale[i]*(ciir1[i][0]-errOffs[i][0]);
-        float dy = coeff*coeffScale[i]*(ciir1[i][1]-errOffs[i][1]);
-        a[0] += dx;
-        a[1] += dy;
-        b[0] += dx*p0s[i][0];
-        b[1] += dy*p0s[i][0];
-        c[0] += dx*p0s[i][1];
-        c[1] += dy*p0s[i][1];
+        float dx = errScale[i][0]*ciir1[i][0]-errOffs[i][0];
+        float dy = errScale[i][1]*ciir1[i][1]-errOffs[i][1];
+        X[0] += dx;
+        X[1] += dy;
+        X[2] += dx*p0s[i][1]+dy*p0s[i][0];
     }
-    offsets[0] = a[0]*orderCoeff[0]+b[0]*orderCoeff[1]+c[0]*orderCoeff[2];
-    offsets[1] = a[1]*orderCoeff[0]+b[1]*orderCoeff[1]+c[1]*orderCoeff[2];
-    offsets[2] = a[1]*orderCoeffTheta[0]+c[0]*orderCoeffTheta[1]+c[1]*orderCoeffTheta[2];
-}
-
-float avgFreq() {
-    long rtn = 0;
-    for (int i=0;i<30;i++) {
-        int j = (i + period_index) % 30;
-        int k = (i + period_index - 1) % 30;
-        if (period[j] > 0 && period[k] > 0) {
-            long prd = period[j]-period[k];
-            if (prd > 0) {
-                rtn += prd;
-            }
+    for (int i=0;i<3;i++){
+        offsets[i] = 0.0
+        for (int j=0;j<3;j++){
+            offsets[i] += lstSqCoeff[i][j]*X[j];
         }
     }
-    return ((float)rtn/30.0);
 }

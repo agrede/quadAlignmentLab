@@ -2,7 +2,19 @@
 */
 #include <IIRFilter.h>
 #include <ADC.h>
-#define HWSERIAL Serial1
+#include <CmdMessenger.h>
+
+CmdMessenger usrMsg = CmdMessenger(Serial);
+CmdMessenger errMsg = CmdMessenger(Serial1);
+enum{
+    kGetValues,
+    kGetDeltas,
+    kGetOffsets,
+};
+enum{
+    kRequestError,
+    kRecieveError,
+};
 
 // Read order
 const int syncReads[6][2][3] = {
@@ -51,12 +63,46 @@ float offsets[3] = {0.0, 0.0, 0.0};
 // ADC reader
 ADC *adc = new ADC();
 ADC::Sync_result syncRes;
-String serialComm;
+
+
+void getValues() {
+    usrMsg.sendCmdStart(kGetValues);
+    for(int i=0; i<4; i++) {
+        for(int j=0; j<4; j++){
+            usrMsg.sendCmdBinArg<float>(ciir0[i][j]);
+        }
+    }
+}
+void getDeltas() {
+    usrMsg.sendCmdStart(kGetDeltas);
+    for(int i=0; i<4; i++) {
+        for(int j=0; j<2; j++){
+            usrMsg.sendCmdBinArg<float>(ciir1[i][j]);
+        }
+    }
+}
+void getOffsets() {
+    usrMsg.sendCmdStart(kGetValues);
+    updateOffsets();
+    for(int i=0; i<3; i++) {
+        usrMsg.sendCmdBinArg<float>(offsets[i]);
+    }
+    usrMsg.sendCmdEnd();
+}
+void sendOffsets() {
+    errMsg.sendCmdStart(kRecieveError);
+    updateOffsets();
+    for(int i=0; i<3; i++) {
+        errMsg.sendCmdBinArg<float>(offsets[i]);
+    }
+    errMsg.sendCmdEnd();
+}
+
 
 void setup() {
     // put your setup code here, to run once:
-    Serial.begin(9600);
-    HWSERIAL.begin(9600);
+    Serial.begin(115200);
+    Serial1.begin(115200);
     pinMode(14, INPUT);
     pinMode(25, INPUT);
     pinMode(28, INPUT);
@@ -91,66 +137,16 @@ void setup() {
             iir1[i][j] = new IIRFilter(b1, a1);
         }
     }
+    usrMsg.attach(kGetValues, getValues);
+    usrMsg.attach(kGetDeltas, getDeltas);
+    usrMsg.attach(kGetOffsets, getOffsets);
+    errMsg.attach(kRequestError, sendOffsets);
 }
 
 void loop() {
     updatePos();
-    if (Serial.available() > 0) {
-        serialComm = Serial.readStringUntil('\n');
-        if (serialComm == "values") {
-            for(int i=0;i<4;i++){
-                for(int j=0;j<4;j++){
-                    Serial.print(ciir0[i][j]);
-                    Serial.print(", ");
-                }
-            }
-            Serial.println("");
-        } else if (serialComm == "deltas") {
-            for(int i=0;i<4;i++){
-                Serial.print(ciir1[i][0]);
-                Serial.print(", ");
-                Serial.print(ciir1[i][1]);
-                Serial.print("; ");
-            }
-            Serial.println("");
-        } else if (serialComm == "offsets") {
-            updateOffsets();
-            for(int i=0;i<3;i++){
-                Serial.print(offsets[i], 4);
-                Serial.print(", ");
-            }
-            Serial.println("");
-        } else if (serialComm == "volts") {
-            int rtn[4][4];
-            for(int i=0;i<6;i++) {
-                for (int j=0;j<2;j++) {
-                    rtn[syncReads[i][j][1]][syncReads[i][j][2]] = adc->analogRead(syncReads[i][j][0]);
-                }
-            }
-            // Single Reads
-            for(int i=0;i<4;i++) {
-                rtn[singleReads[i][1]][singleReads[i][2]] = adc->analogRead(singleReads[i][0]);
-            }
-            for(int i=0;i<4;i++) {
-                for(int j=0;j<4;j++) {
-                    Serial.print(rtn[i][j]);
-                    Serial.print(", ");
-                }
-                Serial.print("; ");
-            }
-            Serial.println("");
-        }
-    }
-    if (HWSERIAL.available() > 0) {
-        HWSERIAL.readString(); // discard to eol
-        updateOffsets();
-        HWSERIAL.print(offsets[0], 4); // x in mm
-        HWSERIAL.print(" ");
-        HWSERIAL.print(offsets[1], 4); // y in mm
-        HWSERIAL.print(" ");
-        HWSERIAL.println(offsets[2], 4); // theta in rad
-        Serial.println("Send Update");
-    }
+    usrMsg.feedinSerialData();
+    errMsg.feedinSerialData();
 }
 
 

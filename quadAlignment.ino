@@ -19,18 +19,19 @@ const int singleReads[4][3] = {
     A7, 1, 3};
 // Coefficients
 const float lstSqCoeff[3][3] = {
-    0.00326549217934012, 0.0022916757615726196, 0.0003644522521584955,
-    0.3625921432602209, 0.02053341482369067, 0.00326549217934012,
-    0.02053341482369067, 0.34774339052210196, 0.0022916757615726196}; // y order: theta, tx, ty, x order sum dx, sum dy, inner product
+    0.35967258840323113, 0.012546421946241499, 0.002939649003336809,
+    0.0125464219462415, 0.339309687001476, 0.0014002703065001674,
+    0.002939649003336809, 0.0014002703065001674, 0.00032808582626526887}; // y order: tx, ty, theta x order sum dx, sum dy, inner product
 float errScale[4][2] = {
-    1.06215847, 1.06215847,
-    0.668015881, 0.668015881,
+    1.57855048, 3.83336533,
+    0.62300071, 0.87135483,
     1.0, 1.0,
-    1.09505483, 1.27578865}; // Error cell slopes [1/mm]
+    1.02438082, 0.71731386}; // Error cell slopes [1/mm]
 float errOffs[4][2] = {
-    -0.29589299, -0.29589299,
-    0.23228652, 0.23228652,
-    -0.10956691, 0.11839993}; // Error celll X and Y offsets [mm]
+    0.43339709, -0.09767916,
+    -0.31518955, 0.04775822,
+    0.0, 0.0,
+    -0.39531853, -0.16846749}; // Error celll X and Y offsets [mm]
 const float p0s[4][2] = {
     -14.786, 26.88, -20.864, -26.88,
     16.786, -26.88, 22.846, 26.88}; // x, y centers of quadrant PDs [mm]
@@ -85,7 +86,6 @@ void setup() {
     for(int i=0;i<4;i++){
         for(int j=0;j<4;j++){
             iir0[i][j] = new IIRFilter(b0, a0);
-            zero[i][j] = 0.0;
         }
         for(int j=0;j<2;j++){
             iir1[i][j] = new IIRFilter(b1, a1);
@@ -203,14 +203,14 @@ void updateOffsets() {
         if (i==2) {
             i++;
         }
-        float dx = errScale[i][0]*ciir1[i][0]-errOffs[i][0];
-        float dy = errScale[i][1]*ciir1[i][1]-errOffs[i][1];
+        float dx = errScale[i][0]*ciir1[i][0]+errOffs[i][0];
+        float dy = errScale[i][1]*ciir1[i][1]+errOffs[i][1];
         X[0] += dx;
         X[1] += dy;
-        X[2] += dx*p0s[i][1]+dy*p0s[i][0];
+        X[2] += -dx*p0s[i][1]+dy*p0s[i][0];
     }
     for (int i=0;i<3;i++){
-        offsets[i] = 0.0
+        offsets[i] = 0.0;
         for (int j=0;j<3;j++){
             offsets[i] += lstSqCoeff[i][j]*X[j];
         }

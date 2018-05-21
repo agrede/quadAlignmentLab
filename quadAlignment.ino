@@ -105,8 +105,8 @@ void unknownCommand(){
 
 void setup() {
     // put your setup code here, to run once:
-    Serial.begin(9600);
-    Serial1.begin(9600);
+    Serial.begin(115200);
+    Serial1.begin(115200);
     pinMode(14, INPUT);
     pinMode(25, INPUT);
     pinMode(28, INPUT);

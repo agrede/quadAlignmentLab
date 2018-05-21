@@ -72,6 +72,7 @@ void getValues() {
             usrMsg.sendCmdBinArg<float>(ciir0[i][j]);
         }
     }
+    usrMsg.sendCmdEnd();
 }
 void getDeltas() {
     usrMsg.sendCmdStart(kGetDeltas);
@@ -80,9 +81,10 @@ void getDeltas() {
             usrMsg.sendCmdBinArg<float>(ciir1[i][j]);
         }
     }
+    usrMsg.sendCmdEnd();
 }
 void getOffsets() {
-    usrMsg.sendCmdStart(kGetValues);
+    usrMsg.sendCmdStart(kGetOffsets);
     updateOffsets();
     for(int i=0; i<3; i++) {
         usrMsg.sendCmdBinArg<float>(offsets[i]);
@@ -90,19 +92,21 @@ void getOffsets() {
     usrMsg.sendCmdEnd();
 }
 void sendOffsets() {
-    errMsg.sendCmdStart(kRecieveError);
     updateOffsets();
+    errMsg.sendCmdStart(kRecieveError);
     for(int i=0; i<3; i++) {
         errMsg.sendCmdBinArg<float>(offsets[i]);
     }
     errMsg.sendCmdEnd();
 }
-
+void unknownCommand(){
+    Serial.println("Unknown!");
+}
 
 void setup() {
     // put your setup code here, to run once:
-    Serial.begin(115200);
-    Serial1.begin(115200);
+    Serial.begin(9600);
+    Serial1.begin(9600);
     pinMode(14, INPUT);
     pinMode(25, INPUT);
     pinMode(28, INPUT);
@@ -137,6 +141,7 @@ void setup() {
             iir1[i][j] = new IIRFilter(b1, a1);
         }
     }
+    usrMsg.attach(unknownCommand);
     usrMsg.attach(kGetValues, getValues);
     usrMsg.attach(kGetDeltas, getDeltas);
     usrMsg.attach(kGetOffsets, getOffsets);

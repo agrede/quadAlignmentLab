@@ -6,6 +6,14 @@ from time import sleep
 from datetime import datetime
 
 
+log = open("test.log", "w")
+
+
+def getLog(dta):
+    log.write(",".join([str(x) for x in dta])+"\n")
+    return None
+
+
 def getValues(dta):
     tmp = np.array(dta).reshape(4, 4)
     rtn = ""
@@ -68,14 +76,49 @@ def getDate(dta):
     return (tme.isoformat()+"\n")
 
 
+def getEncoderCounts(dta):
+    return ("%d, %d, %d\n" % tuple(dta))
+
+
+def getEncoderStats(dta):
+    rtn = ""
+    for k, d in enumerate(dta):
+        rtn += "Enc %d: " % k
+        rtn += ("Neg " if (d & 1) else "Pos ")
+        rtn += ("Up " if ((d >> 1) & 1) else "Dn ")
+        rtn += ("Pl " if ((d >> 2) & 1) else "")
+        rtn += ("" if ((d >> 3) & 1) else "Disabled ")
+        rtn += ("Index " if ((d >> 4) & 1) else "")
+        rtn += ("Cmp " if ((d >> 5) & 1) else "")
+        rtn += ("Und " if ((d >> 6) & 1) else "")
+        rtn += ("Ovr " if ((d >> 7) & 1) else "")
+        rtn += "\n"
+    return rtn
+
+
+def getPIDCoeff(dta):
+    hdr = ["Kp: ", "Ki: ", "Kd: "]
+    rtn = ""
+    for k, h in enumerate(hdr):
+        rtn += h
+        rtn += "%0.4e, %0.4e, %0.4e\n" % tuple(dta[k::3])
+    return rtn
+
+
+def getTimes(dta):
+    return ("%d, %d, %d\n" % tuple(dta))
+
+
 cmdsB = [
-    ["kRecievePIDLogging", "".join(["llfb" for x in range(4)])],
-    ["kGetPIDEnabled", "?"],
-    ["kSetPIDEnabled", "?"],
-    ["kSetPIDLoggingEnabled", "?"],
-    ["kGetPIDLoggingEnabled", "?"],
-    ["kGetErrorCellEnabled", "?"],
-    ["kSetErrorCellEnabled", "?"],
+    ["kRecievePIDLogging", "".join(["fffbbb" for x in range(3)])+"?"],
+    ["kSetEncoder", "?"],
+    ["kGetEncoder", "?"],
+    ["kSetDrive", "?"],
+    ["kGetDrive", "?"],
+    ["kSetLogging", "?"],
+    ["kGetLogging", "?"],
+    ["kSetErrorCell", "?"],
+    ["kGetErrorCell", "?"],
     ["kSheetCenter", ""],
     ["kSetTarget", "fff"],
     ["kGetTarget", "fff"],
@@ -87,29 +130,39 @@ cmdsB = [
     ["kGetStabilityCountThreshold", "b"],
     ["kSetStabilityThreshold", "f"],
     ["kGetStabilityThreshold", "f"],
-    ["kSetFeedForwardEnabled", "?"],
-    ["kGetFeedForwardEnabled", "?"],
+    ["kSetFeedForward", "?"],
+    ["kGetFeedForward", "?"],
     ["kSetGlobalPosition", "ff"],
     ["kGetGlobalPosition", "ff"],
     ["kSetPanelOrientation", "ff"],
     ["kGetPanelOrientation", "ff"],
     ["kSetRTC", "L"],
-    ["kGetRTC", "L"]
+    ["kGetRTC", "L"],
+    ["kGetEncoderCounts", "fff"],
+    ["kGetEncoderStats", "bbb"],
+    ["kGetPIDCoeff", "".join(["fff" for x in range(3)])],
+    ["kGetTimes", "LLL"]
 ]
 
 fnsB = {
-    'kGetPIDEnabled': getTF,
-    'kGetPIDLoggingEnabled': getTF,
-    'kGetErrorCellEnabled': getTF,
+    'kRecievePIDLogging': getLog,
+    'kGetDrive': getTF,
+    'kGetLogging': getTF,
+    'kGetErrorCell': getTF,
     'kGetTarget': getTarget,
     'kGetErrorScale': getFloat,
     'kGetEMOCountThreshold': getByte,
     'kGetStabilityCountThreshold': getByte,
     'kGetStabilityThreshold': getFloat,
-    'kGetFeedForwardEnabled': getTF,
+    'kGetFeedForward': getTF,
     'kGetGlobalPosition': getCoords,
     'kGetPanelOrientation': getCoords,
-    'kGetRTC': getDate
+    'kGetRTC': getDate,
+    'kGetEncoder': getTF,
+    'kGetEncoderCounts': getEncoderCounts,
+    'kGetEncoderStats': getEncoderStats,
+    'kGetPIDCoeff': getPIDCoeff,
+    'kGetTimes': getTimes
 }
 
 ardA = pcm.ArduinoBoard("/dev/ttyACM0", baud_rate=115200)
@@ -121,7 +174,10 @@ cB = pcm.CmdMessenger(ardB, cmdsB)
 
 def sndrcvBool(msgr, msg, inpt):
     if len(inpt) > 1:
-        msgr.send("kSet"+msg, bool(inpt[2]))
+        if inpt[1] == "t":
+            msgr.send("kSet"+msg, True)
+        elif inpt[1] == "f":
+            msgr.send("kSet"+msg, False)
     else:
         msgr.send("kGet"+msg)
 
@@ -154,6 +210,7 @@ def recieve(cmds):
             if cmd in fnsA:
                 cmds.put(fnsA[cmd](dta))
         if (ardB.comm.in_waiting):
+            sleep(0.01)
             try:
                 cmd, dta, tme = cB.receive()
             except ValueError:
@@ -163,7 +220,9 @@ def recieve(cmds):
                 cmds.put(str(err)+"\n")
                 continue
             if cmd in fnsB:
-                cmds.put(fnsB[cmd](dta))
+                tmp = fnsB[cmd](dta)
+                if (tmp is not None):
+                    cmds.put(tmp)
 
 
 def display(cmds):
@@ -177,11 +236,13 @@ def display(cmds):
             elif inpt[0] == 'offsets':
                 cA.send("kGetOffsets")
             elif inpt[0] == "pid":
-                sndrcvBool(cB, "PIDEnabled", inpt)
+                sndrcvBool(cB, "Drive", inpt)
             elif inpt[0] == "pidlog":
-                sndrcvBool(cB, "PIDLoggingEnabled", inpt)
+                sndrcvBool(cB, "Logging", inpt)
+            elif inpt[0] == "enc":
+                sndrcvBool(cB, "Encoder", inpt)
             elif inpt[0] == "errcell":
-                sndrcvBool(cB, "ErrorCellEnabled", inpt)
+                sndrcvBool(cB, "ErrorCell", inpt)
             elif inpt[0] == "target":
                 sndrcvFloats(cB, "Target", inpt, 3)
             elif inpt[0] == "errscale":
@@ -193,7 +254,7 @@ def display(cmds):
             elif inpt[0] == "stbthr":
                 sndrcvFloats(cB, "StabilityThreshold", inpt)
             elif inpt[0] == "ff":
-                sndrcvBool(cB, "FeedForwardEnabled", inpt)
+                sndrcvBool(cB, "FeedForward", inpt)
             elif inpt[0] == "gposition":
                 sndrcvFloats(cB, "GlobalPosition", inpt, 2)
             elif inpt[0] == "orientation":
@@ -203,11 +264,22 @@ def display(cmds):
                     cB.send("kSetRTC", int(datetime.now().timestamp()))
                 else:
                     cB.send("kGetRTC")
+            elif inpt[0] == "encc":
+                cB.send("kGetEncoderCounts")
+            elif inpt[0] == "encs":
+                cB.send("kGetEncoderStats")
+            elif inpt[0] == "cnt":
+                cB.send("kSheetCenter")
+            elif inpt[0] == "tms":
+                cB.send("kGetTimes")
+            elif inpt[0] == "pidcoeff":
+                cB.send("kGetPIDCoeff")
             elif inpt[0] == 'quit':
                 break
         sleep(0.1)
         while not cmds.empty():
             print(cmds.get())
+    log.close()
 
 
 commands = Queue()
